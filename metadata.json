@@ -1,0 +1,6 @@
+{
+  "name": "Mikhmon Winbox Modern Dashboard",
+  "description": "Gabungan dashboard Mikhmon V3 dan Winbox untuk manajemen Hotspot, PPPoE, dan monitoring real-time Mikrotik dengan UI modern, responsif, mode gelap, dan ekspor voucher PDF/CSV.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
