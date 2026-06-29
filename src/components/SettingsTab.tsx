@@ -96,18 +96,23 @@ export const parseMikhmonPhp = (phpContent: string): Partial<RouterConfig>[] => 
   }
 
   // Map and clean up values
-  return routersList.map(r => ({
-    name: r.name || `Mikhmon_${r.ip}`,
-    ip: r.ip || '',
-    port: r.port || '80',
-    username: r.username || 'admin',
-    password: r.password || '',
-    hotspotName: r.hotspotName || 'hotspot1',
-    dnsName: r.dnsName || 'wifi.net',
-    useSsl: r.port === '443',
-    isSimulator: false,
-    isActive: false
-  })).filter(r => r.ip !== '');
+  return routersList.map(r => {
+    const port = r.port && r.port !== '80' ? r.port : '8728'; // Mikhmon v3 default is 8728, if '80' came from a fallback, prefer 8728
+    const isRest = port === '80' || port === '443';
+    return {
+      name: r.name || `Mikhmon_${r.ip}`,
+      ip: r.ip || '',
+      port,
+      username: r.username || 'admin',
+      password: r.password || '',
+      hotspotName: r.hotspotName || 'hotspot1',
+      dnsName: r.dnsName || 'wifi.net',
+      useSsl: port === '443' || port === '8729',
+      isSimulator: false,
+      isActive: false,
+      apiType: (isRest ? 'v7-rest' : 'v6-api') as 'v7-rest' | 'v6-api'
+    };
+  }).filter(r => r.ip !== '');
 };
 
 export default function SettingsTab({
@@ -255,7 +260,14 @@ export default function SettingsTab({
                 </label>
                 <select
                   value={editForm.isSimulator ? 'yes' : 'no'}
-                  onChange={(e) => setEditForm({...editForm, isSimulator: e.target.value === 'yes'})}
+                  onChange={(e) => {
+                    const isSim = e.target.value === 'yes';
+                    setEditForm({
+                      ...editForm,
+                      isSimulator: isSim,
+                      apiType: isSim ? 'v7-rest' : (editForm.apiType || 'v7-rest')
+                    });
+                  }}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-sky-500"
                 >
                   <option value="no">Mikrotik Router Fisik (Koneksi API)</option>
@@ -264,12 +276,46 @@ export default function SettingsTab({
               </div>
             </div>
 
-            {/* Row 2: IP, REST Port, Protocol */}
+            {/* Row 1b: API Connection Type (only if physical router) */}
             {!editForm.isSimulator && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-950/40 p-4 rounded-xl border border-slate-800/60">
+              <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800/60 space-y-3">
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                    IP Address Router / Host *
+                    Tipe Koneksi / API Mikrotik
+                  </label>
+                  <select
+                    value={editForm.apiType || 'v7-rest'}
+                    onChange={(e) => {
+                      const apiType = e.target.value as 'v7-rest' | 'v6-api';
+                      const defaultPort = apiType === 'v7-rest' 
+                        ? (editForm.useSsl ? '443' : '80') 
+                        : (editForm.useSsl ? '8729' : '8728');
+                      setEditForm({
+                        ...editForm,
+                        apiType,
+                        port: defaultPort
+                      });
+                    }}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="v7-rest">REST API - RouterOS v7+ (Menggunakan Port HTTP/HTTPS Web)</option>
+                    <option value="v6-api">API Port - RouterOS v6 / v7 (Menggunakan Port TCP RouterOS API)</option>
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                    {editForm.apiType === 'v6-api' 
+                      ? 'Rekomendasi untuk RouterOS v6 (Mikhmon v3 Klasik). Menggunakan port API standar (default: 8728 / 8729).' 
+                      : 'Rekomendasi untuk RouterOS v7. Menggunakan REST API bawaan RouterOS v7 pada port Web (default: 80 / 443).'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Row 2: IP, REST Port, Protocol */}
+            {!editForm.isSimulator && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-950/40 p-4 rounded-xl border border-slate-800/60 font-sans">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                    IP Address / Host Mikrotik *
                   </label>
                   <input
                     type="text"
@@ -282,28 +328,39 @@ export default function SettingsTab({
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                    REST API Port *
+                    {editForm.apiType === 'v6-api' ? 'API Service Port *' : 'REST API Port *'}
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. 80 atau 443"
-                    value={editForm.port || '80'}
+                    placeholder={editForm.apiType === 'v6-api' ? 'e.g. 8728 atau 8729' : 'e.g. 80 atau 443'}
+                    value={editForm.port || (editForm.apiType === 'v6-api' ? '8728' : '80')}
                     onChange={(e) => setEditForm({...editForm, port: e.target.value})}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                   />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                    Protokol SSL
+                    Protokol SSL / Secure Connection
                   </label>
                   <select
                     value={editForm.useSsl ? 'yes' : 'no'}
-                    onChange={(e) => setEditForm({...editForm, useSsl: e.target.value === 'yes'})}
+                    onChange={(e) => {
+                      const useSsl = e.target.value === 'yes';
+                      const isV6 = editForm.apiType === 'v6-api';
+                      const defaultPort = isV6
+                        ? (useSsl ? '8729' : '8728')
+                        : (useSsl ? '443' : '80');
+                      setEditForm({
+                        ...editForm,
+                        useSsl,
+                        port: defaultPort
+                      });
+                    }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-sky-500"
                   >
-                    <option value="no">HTTP (Normal)</option>
-                    <option value="yes">HTTPS (Secure SSL REST)</option>
+                    <option value="no">HTTP / TCP API (Normal Plaintext)</option>
+                    <option value="yes">HTTPS / SSL API (Encrypted Secure)</option>
                   </select>
                 </div>
               </div>
@@ -368,22 +425,47 @@ export default function SettingsTab({
               </div>
             </div>
 
-            {/* Instruction info box for real router */}
+             {/* Instruction info box for real router */}
             {!editForm.isSimulator && (
               <div className="bg-slate-950 border border-slate-800/80 p-3 rounded-xl flex gap-3 text-[11px] text-slate-400">
                 <HelpCircle className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <span className="font-bold text-white block">Persyaratan Mikrotik RouterOS v7 REST API:</span>
-                  <p>
-                    1. Router harus menjalankan versi <span className="text-white font-mono">RouterOS v7.x</span> keatas.
-                  </p>
-                  <p>
-                    2. Aktifkan service REST API di router melalui terminal Winbox:{' '}
-                    <span className="text-sky-400 font-mono">/ip service set www-ssl disabled=no</span> atau{' '}
-                    <span className="text-sky-400 font-mono">/ip service set www port=80 disabled=no</span>.
-                  </p>
-                  <p>
-                    3. Pengguna disarankan menggunakan simulator jika ingin menjelajahi dashboard secara instan dan aman.
+                <div className="space-y-2">
+                  <span className="font-bold text-white block">Persyaratan & Cara Aktivasi Koneksi Mikrotik:</span>
+                  
+                  {editForm.apiType === 'v6-api' ? (
+                    <div className="space-y-1">
+                      <p className="text-white font-semibold">Tipe: API Port (RouterOS v6 / v7)</p>
+                      <p>
+                        1. Aktifkan service <span className="text-white font-mono">api</span> (plaintext) atau <span className="text-white font-mono">api-ssl</span> (encrypted) di MikroTik Anda.
+                      </p>
+                      <p>
+                        2. Jalankan perintah terminal Winbox untuk mengaktifkan:
+                        <br />
+                        <span className="text-sky-400 font-mono block mt-0.5 select-all">/ip service set api disabled=no port=8728</span>
+                      </p>
+                      <p>
+                        3. Pastikan port <span className="text-white font-mono">8728</span> (atau port kustom Anda) tidak diblokir oleh firewall MikroTik.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="text-white font-semibold">Tipe: REST API (RouterOS v7+ Sahaja)</p>
+                      <p>
+                        1. Memerlukan <span className="text-white font-mono">RouterOS v7.x ke atas</span> (RouterOS v6 tidak mendukung REST API).
+                      </p>
+                      <p>
+                        2. Aktifkan service <span className="text-white font-mono">www</span> (HTTP) atau <span className="text-white font-mono">www-ssl</span> (HTTPS) di MikroTik Anda.
+                      </p>
+                      <p>
+                        3. Jalankan perintah terminal Winbox untuk mengaktifkan:
+                        <br />
+                        <span className="text-sky-400 font-mono block mt-0.5 select-all">/ip service set www disabled=no port=80</span>
+                      </p>
+                    </div>
+                  )}
+                  
+                  <p className="text-[10px] text-slate-500 pt-1 border-t border-slate-800/50">
+                    💡 Jika server di-host di Cloud, MikroTik Anda harus memiliki IP Publik / VPN Remote yang bisa diakses dari internet.
                   </p>
                 </div>
               </div>
